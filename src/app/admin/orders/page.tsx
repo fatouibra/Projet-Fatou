@@ -121,7 +121,7 @@ export default function OrdersPage() {
   const endIndex = startIndex + itemsPerPage
   const paginatedOrders = filteredOrders.slice(startIndex, endIndex)
 
-  const restaurants = [...new Set(orders.map(o => o.restaurant.name))]
+  const restaurants =  Array.from(new Set(orders.map(o => o.restaurant.name)))
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
