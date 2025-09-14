@@ -1,0 +1,215 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Restaurant {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  address     String
+  phone       String
+  email       String
+  image       String?
+  rating      Float     @default(0)
+  likesCount  Int       @default(0)
+  isActive    Boolean   @default(true)
+  cuisine     String    // Type de cuisine
+  deliveryFee Float     @default(0)
+  minOrderAmount Float  @default(15.0)
+  openingHours String   @default("9h00 - 22h00")
+  products    Product[]
+  orders      Order[]
+  reviews     Review[]
+  promotions  Promotion[]
+  categories  Category[] // Catégories spécifiques au restaurant
+  managers    User[]     // Gestionnaires du restaurant (role RESTAURATOR)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Category {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  image        String?
+  active       Boolean     @default(true)
+  order        Int         @default(0)
+  restaurantId String?     // null pour les catégories globales, restaurant ID pour les catégories spécifiques
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  products     Product[]
+}
+
+model Product {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  price        Float
+  image        String?
+  rating       Float       @default(0)
+  likesCount   Int         @default(0)
+  active       Boolean     @default(true)
+  featured     Boolean     @default(false)
+  isNew        Boolean     @default(false)
+  isPopular    Boolean     @default(false)
+  isVegetarian Boolean     @default(false)
+  restaurantId String
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems   OrderItem[]
+  reviews      Review[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  orderNumber   String      @unique
+  restaurantId  String
+  restaurant    Restaurant  @relation(fields: [restaurantId], references: [id])
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id])
+  customerName  String
+  customerPhone String
+  customerEmail String?
+  address       String
+  deliveryType  String      @default("DELIVERY")
+  paymentMethod String      @default("CASH_ON_DELIVERY") // CASH_ON_DELIVERY, ONLINE
+  paymentStatus String      @default("PENDING")          // PENDING, PAID, FAILED
+  status        String      @default("RECEIVED")
+  total         Float
+  deliveryFee   Float       @default(0)
+  items         OrderItem[]
+  notes         String?
+  estimatedTime Int?        // minutes
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  quantity  Int
+  price     Float
+  orderId   String
+  productId String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+// Modèle User unifié avec système de rôles
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String
+  phone     String?
+  address   String?
+  password  String?   // Null pour les customers (pas de connexion)
+  role      String    @default("CUSTOMER") // ADMIN, RESTAURATOR, CUSTOMER
+  isActive  Boolean   @default(true)
+  
+  // Relations spécifiques selon le rôle
+  restaurantId String?     // Pour les RESTAURATOR
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  // Relations communes
+  orders    Order[]
+  
+  // Champs spécifiques aux managers/admins
+  mustChangePassword Boolean @default(false) // Force password change on first login
+  permissions  String?     // Permissions séparées par des virgules pour les managers
+  roleId       String?     // Référence vers Role personnalisé
+  customRole   Role?       @relation(fields: [roleId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([role])
+  @@index([restaurantId])
+}
+
+model Like {
+  id           String     @id @default(cuid())
+  // Identifiant de l'utilisateur (pour l'instant utilisons phone + email comme identifiant unique)
+  userPhone    String?
+  userEmail    String?
+  userFingerprint String? // Pour les utilisateurs anonymes
+  
+  // Type de like (PRODUCT ou RESTAURANT)
+  targetType   String     // PRODUCT ou RESTAURANT
+  targetId     String     // ID du produit ou restaurant
+  
+  createdAt    DateTime   @default(now())
+  
+  // Index composite pour éviter les doublons et optimiser les requêtes
+  @@unique([userPhone, userEmail, userFingerprint, targetType, targetId], name: "unique_like")
+  @@index([targetType, targetId])
+}
+
+model Review {
+  id            String      @id @default(cuid())
+  rating        Int         // Note de 1 à 5
+  comment       String?
+  customerName  String
+  customerEmail String?
+  
+  // Relations - un avis peut être soit pour un restaurant soit pour un produit
+  restaurantId  String?
+  restaurant    Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  productId     String?
+  product       Product?    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Un avis doit être lié soit à un restaurant soit à un produit, mais pas les deux
+  @@index([restaurantId])
+  @@index([productId])
+}
+
+model Promotion {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  description   String?
+  type          String   // PERCENTAGE, FIXED_AMOUNT, FREE_SHIPPING
+  value         Float
+  minimumOrder  Float?
+  maximumUse    Int?
+  currentUse    Int      @default(0)
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean  @default(true)
+  restaurantId  String?
+  restaurant    Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Role {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String?
+  isActive    Boolean     @default(true)
+  permissions Permission[]
+  users       User[]      // Relations avec les utilisateurs
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String
+  category    String
+  roles       Role[]
+}
